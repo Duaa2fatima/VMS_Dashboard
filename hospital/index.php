@@ -77,7 +77,7 @@ if ($pdo) {
 
         // 5. Recent Vaccinations Logged
         $stmtRec = $pdo->prepare("
-            SELECT vr.*, c.child_name, c.date_of_birth, v.vaccine_name, p.name as parent_name
+            SELECT vr.*, c.child_name, c.gender, c.date_of_birth, v.vaccine_name, v.age_group, p.name as parent_name, p.phone as parent_phone
             FROM vaccination_records vr
             JOIN bookings b ON vr.booking_id = b.booking_id
             JOIN children c ON vr.child_id = c.child_id
@@ -97,6 +97,12 @@ if ($pdo) {
 ?>
 
 <?php require_once __DIR__ . '/includes/sidebar.php'; ?>
+
+<style>
+.clinical-log-item:hover {
+    background-color: rgba(21, 114, 232, 0.035) !important;
+}
+</style>
 
 <div class="main-panel">
     <?php require_once __DIR__ . '/includes/navbar.php'; ?>
@@ -373,37 +379,100 @@ if ($pdo) {
 
                 <!-- Recent Clinical Records Logged -->
                 <div class="col-lg-5 mb-4">
-                    <div class="card card-round shadow-sm h-100">
-                        <div class="card-header d-flex justify-content-between align-items-center">
-                            <div class="card-title">
-                                <i class="fas fa-file-medical text-success me-2"></i> Recent Clinical Logs
+                    <div class="card card-round shadow-sm h-100 border-0">
+                        <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
+                            <div class="card-title mb-0 d-flex align-items-center gap-2">
+                                <span class="avatar-title rounded-circle p-2 d-inline-flex align-items-center justify-content-center" style="width: 34px; height: 34px; background: rgba(40, 167, 69, 0.12);">
+                                    <i class="fas fa-file-medical text-success fs-6"></i>
+                                </span>
+                                <div>
+                                    <h6 class="fw-bold mb-0 text-dark">Recent Clinical Logs</h6>
+                                    <small class="text-muted" style="font-size: 0.74rem;">Latest vaccine administrations</small>
+                                </div>
                             </div>
-                            <a href="records.php" class="btn btn-sm btn-outline-success rounded-pill">Log</a>
+                            <a href="records.php" class="btn btn-xs btn-outline-success rounded-pill px-3 shadow-sm fw-bold">
+                                <i class="fas fa-clipboard-list me-1"></i> View All
+                            </a>
                         </div>
                         <div class="card-body p-0">
                             <?php if (empty($recentVaccinations)): ?>
-                                <div class="text-center py-4 text-muted">
-                                    <i class="fas fa-notes-medical fa-2x mb-2 text-muted"></i>
-                                    <p class="small mb-0">No vaccination records logged yet.</p>
+                                <div class="text-center py-5 px-3">
+                                    <div class="avatar-lg mx-auto mb-3">
+                                        <span class="avatar-title rounded-circle bg-light text-muted fs-3 d-flex align-items-center justify-content-center mx-auto" style="width: 60px; height: 60px;">
+                                            <i class="fas fa-notes-medical text-muted"></i>
+                                        </span>
+                                    </div>
+                                    <h6 class="fw-bold text-dark mb-1">No Clinical Logs Yet</h6>
+                                    <p class="text-muted small mb-3">Once medical staff mark appointments as Vaccinated, administration logs will appear here.</p>
+                                    <a href="appointments.php?filter=Approved" class="btn btn-sm btn-outline-primary rounded-pill">
+                                        <i class="fas fa-syringe me-1"></i> Manage Appointments
+                                    </a>
                                 </div>
                             <?php else: ?>
-                                <ul class="list-group list-group-flush">
+                                <div class="list-group list-group-flush">
                                     <?php foreach ($recentVaccinations as $rv): ?>
-                                        <li class="list-group-item p-3">
-                                            <div class="d-flex justify-content-between align-items-start mb-1">
-                                                <strong class="text-dark"><?= htmlspecialchars($rv['child_name']) ?></strong>
-                                                <?= getStatusBadge($rv['status']) ?>
+                                        <div class="list-group-item p-3 border-bottom clinical-log-item" style="transition: background 0.15s ease;">
+                                            <div class="d-flex align-items-start gap-3">
+                                                <!-- Patient / Child Avatar -->
+                                                <div class="avatar-sm flex-shrink-0 mt-1">
+                                                    <span class="avatar-title rounded-circle text-white fw-bold d-flex align-items-center justify-content-center shadow-sm" style="width: 38px; height: 38px; background: <?= (($rv['gender'] ?? '') === 'Female') ? 'linear-gradient(135deg, #f06292, #ec407a)' : 'linear-gradient(135deg, #1572e8, #48abf7)' ?>;">
+                                                        <?= strtoupper(substr($rv['child_name'] ?? 'C', 0, 1)) ?>
+                                                    </span>
+                                                </div>
+
+                                                <!-- Log Content -->
+                                                <div class="flex-grow-1" style="min-width: 0;">
+                                                    <div class="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-1">
+                                                        <div class="text-truncate">
+                                                            <strong class="text-dark me-1"><?= htmlspecialchars($rv['child_name']) ?></strong>
+                                                            <span class="badge bg-light text-muted border" style="font-size: 0.7rem;">
+                                                                <?= calculateAge($rv['date_of_birth']) ?>
+                                                            </span>
+                                                        </div>
+                                                        <div>
+                                                            <?= getStatusBadge($rv['status']) ?>
+                                                        </div>
+                                                    </div>
+
+                                                    <!-- Vaccine Administered Badge -->
+                                                    <div class="d-flex align-items-center gap-2 mb-1">
+                                                        <span class="badge rounded-pill px-2 py-1 text-primary d-inline-flex align-items-center gap-1" style="font-size: 0.74rem; background: rgba(21, 114, 232, 0.08); border: 1px solid rgba(21, 114, 232, 0.25);">
+                                                            <i class="fas fa-syringe text-primary fa-xs"></i>
+                                                            <strong><?= htmlspecialchars($rv['vaccine_name']) ?></strong>
+                                                            <?php if (!empty($rv['age_group'])): ?>
+                                                                <span class="text-muted fw-normal">&bull; <?= htmlspecialchars($rv['age_group']) ?></span>
+                                                            <?php endif; ?>
+                                                        </span>
+                                                    </div>
+
+                                                    <!-- Guardian & Date Information -->
+                                                    <div class="d-flex justify-content-between align-items-center text-muted small mt-2" style="font-size: 0.78rem;">
+                                                        <span class="text-truncate me-2" title="Guardian: <?= htmlspecialchars($rv['parent_name'] ?? '') ?>">
+                                                            <i class="fas fa-user-shield me-1 text-secondary opacity-75"></i>
+                                                            <?= htmlspecialchars($rv['parent_name'] ?? 'Guardian') ?>
+                                                        </span>
+                                                        <span class="text-nowrap text-secondary">
+                                                            <i class="fas fa-calendar-alt me-1 text-success"></i>
+                                                            <?= formatDate($rv['vaccination_date'], 'd M Y') ?>
+                                                        </span>
+                                                    </div>
+
+                                                    <?php if (!empty($rv['remarks'])): ?>
+                                                        <div class="mt-2 p-2 rounded bg-light border-start border-3 border-success text-dark small" style="font-size: 0.76rem;">
+                                                            <i class="fas fa-comment-medical text-success me-1"></i>
+                                                            <strong>Note:</strong> <?= htmlspecialchars($rv['remarks']) ?>
+                                                        </div>
+                                                    <?php endif; ?>
+                                                </div>
                                             </div>
-                                            <div class="small text-primary fw-bold mb-1">
-                                                <i class="fas fa-syringe me-1"></i> <?= htmlspecialchars($rv['vaccine_name']) ?>
-                                            </div>
-                                            <div class="d-flex justify-content-between text-muted small">
-                                                <span><i class="fas fa-calendar me-1"></i> <?= formatDate($rv['vaccination_date'], 'd M Y') ?></span>
-                                                <span class="fst-italic text-truncate" style="max-width: 140px;"><?= htmlspecialchars($rv['remarks'] ?? '') ?></span>
-                                            </div>
-                                        </li>
+                                        </div>
                                     <?php endforeach; ?>
-                                </ul>
+                                </div>
+                                <div class="card-footer bg-light text-center py-2 border-top">
+                                    <a href="records.php" class="text-muted small fw-bold text-decoration-none d-inline-flex align-items-center gap-1">
+                                        View Complete Clinical Vaccination Records <i class="fas fa-arrow-right fa-xs"></i>
+                                    </a>
+                                </div>
                             <?php endif; ?>
                         </div>
                     </div>

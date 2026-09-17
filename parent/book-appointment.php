@@ -102,6 +102,15 @@ if ($pdo) {
 
         // All catalog vaccines
         $vaccines = $pdo->query("SELECT * FROM vaccines ORDER BY vaccine_id ASC")->fetchAll();
+        $vaccineCatalogMap = [];
+        foreach ($vaccines as $v) {
+            $vaccineCatalogMap[$v['vaccine_id']] = [
+                'vaccine_id'   => $v['vaccine_id'],
+                'vaccine_name' => $v['vaccine_name'],
+                'age_group'    => $v['age_group'],
+                'stock_status' => $v['stock_status']
+            ];
+        }
 
         // Distinct Locations for dropdown
         $distinctLocations = $pdo->query("SELECT DISTINCT location FROM hospitals WHERE status = 'Active' AND location IS NOT NULL AND location != '' ORDER BY location ASC")->fetchAll(PDO::FETCH_COLUMN);
@@ -241,7 +250,21 @@ require_once __DIR__ . '/includes/sidebar.php'; ?>
                                     </select>
                                 </div>
 
-                                <!-- Hospital Selection -->
+                                <!-- Vaccine Selection (First so hospital list filters to available only) -->
+                                <div class="mb-3">
+                                    <label class="form-label small fw-bold">Select Vaccine <span class="text-danger">*</span></label>
+                                    <select name="vaccine_id" id="booking_vaccine_id" class="form-select" onchange="onVaccineSelected()" required>
+                                        <option value="">-- Choose Vaccine --</option>
+                                        <?php foreach ($vaccines as $v): ?>
+                                            <option value="<?= $v['vaccine_id'] ?>" <?= ($prefillVaccineId == $v['vaccine_id']) ? 'selected' : '' ?>>
+                                                <?= htmlspecialchars($v['vaccine_name']) ?> (<?= htmlspecialchars($v['age_group']) ?>)
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <div class="form-text small text-muted">Select vaccine to filter and show only hospitals where it is available.</div>
+                                </div>
+
+                                <!-- Hospital Selection (Dynamically filtered based on selected vaccine) -->
                                 <div class="mb-3">
                                     <label class="form-label small fw-bold">Select Hospital Facility <span class="text-danger">*</span></label>
                                     <select name="hospital_id" id="booking_hospital_id" class="form-select" onchange="checkAvailability()" required>
@@ -252,20 +275,7 @@ require_once __DIR__ . '/includes/sidebar.php'; ?>
                                             </option>
                                         <?php endforeach; ?>
                                     </select>
-                                    <div class="form-text small">You can also click "Select Facility" on any card to auto-choose.</div>
-                                </div>
-
-                                <!-- Vaccine Selection -->
-                                <div class="mb-3">
-                                    <label class="form-label small fw-bold">Select Vaccine <span class="text-danger">*</span></label>
-                                    <select name="vaccine_id" id="booking_vaccine_id" class="form-select" onchange="checkAvailability()" required>
-                                        <option value="">-- Choose Vaccine --</option>
-                                        <?php foreach ($vaccines as $v): ?>
-                                            <option value="<?= $v['vaccine_id'] ?>" <?= ($prefillVaccineId == $v['vaccine_id']) ? 'selected' : '' ?>>
-                                                <?= htmlspecialchars($v['vaccine_name']) ?> (<?= htmlspecialchars($v['age_group']) ?>)
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
+                                    <div class="form-text small text-muted" id="hospital_select_hint">You can also click "Select Facility" on any card to auto-choose.</div>
                                 </div>
 
                                 <!-- Appointment Date -->
@@ -275,7 +285,7 @@ require_once __DIR__ . '/includes/sidebar.php'; ?>
                                     <div class="form-text small">Selected hospital will review request, approve it, and assign confirmed appointment time.</div>
                                 </div>
 
-                                <!-- Real-time Stock Availability & Hospital Cross-Suggestions Container -->
+                                <!-- Real-time Stock Availability Container -->
                                 <div id="availability_alert_container" class="mb-3"></div>
 
                                 <button type="submit" id="submit_booking_btn" class="btn btn-primary w-100 btn-round py-2 shadow-sm text-white" <?= empty($children) ? 'disabled' : '' ?>>
@@ -293,7 +303,7 @@ require_once __DIR__ . '/includes/sidebar.php'; ?>
                             <div class="card-title">
                                 <i class="fas fa-hospital text-primary me-2"></i> Accredited Vaccination Centers
                             </div>
-                            <span class="badge bg-success"><?= count($hospitals) ?> Available Centers</span>
+                            <span class="badge bg-success" id="centers-count-badge"><?= count($hospitals) ?> Available Centers</span>
                         </div>
                         <div class="card-body">
                             <?php if (empty($hospitals)): ?>
@@ -303,43 +313,52 @@ require_once __DIR__ . '/includes/sidebar.php'; ?>
                                     <a href="book-appointment.php" class="btn btn-sm btn-outline-primary rounded-pill mt-2">Clear Search Filters</a>
                                 </div>
                             <?php else: ?>
-                                <div class="row g-3">
+                                <div class="row g-3" id="hospital-cards-container">
                                     <?php foreach ($hospitals as $hosp): ?>
-                                        <div class="col-md-12">
-                                            <div class="p-3 border rounded-3 bg-white shadow-sm d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-3 dashboard-stat-card hospital-card-item" data-hospital-id="<?= $hosp['hospital_id'] ?>" style="background: var(--bg-card, #fff);">
-                                                <div class="d-flex align-items-center gap-3">
-                                                    <div class="avatar-md flex-shrink-0">
-                                                        <span class="avatar-title rounded-3 bg-primary text-white fs-4">
-                                                            <i class="fas fa-hospital-symbol"></i>
-                                                        </span>
-                                                    </div>
-                                                    <div>
-                                                        <h6 class="fw-bold mb-1 text-primary">
-                                                            <?= htmlspecialchars($hosp['hospital_name']) ?>
-                                                        </h6>
-                                                        <div class="small text-muted mb-1">
-                                                            <i class="fas fa-map-marker-alt text-danger me-1"></i>
-                                                            <strong><?= htmlspecialchars($hosp['location']) ?></strong> &bull; <?= htmlspecialchars($hosp['address']) ?>
+                                        <div class="col-12 hospital-card-col" data-hospital-id="<?= $hosp['hospital_id'] ?>">
+                                            <div class="card mb-0 border rounded-3 bg-white shadow-none hospital-card-item" data-hospital-id="<?= $hosp['hospital_id'] ?>" style="overflow: hidden; border-color: #e3e6ec !important;">
+                                                <div class="card-body p-3">
+                                                    <div class="row align-items-center g-2">
+                                                        <div class="col-12 col-sm-7 col-md-8 d-flex align-items-center gap-3" style="min-width: 0;">
+                                                            <div class="avatar avatar-md flex-shrink-0" style="width: 44px; height: 44px; min-width: 44px;">
+                                                                <span class="avatar-title rounded-3 bg-primary text-white fs-4 d-flex align-items-center justify-content-center h-100 w-100">
+                                                                    <i class="fas fa-hospital-symbol"></i>
+                                                                </span>
+                                                            </div>
+                                                            <div style="min-width: 0; flex: 1 1 auto; overflow: hidden;">
+                                                                <h6 class="fw-bold mb-1 text-primary text-truncate" title="<?= htmlspecialchars($hosp['hospital_name']) ?>">
+                                                                    <?= htmlspecialchars($hosp['hospital_name']) ?>
+                                                                </h6>
+                                                                <div class="small text-muted mb-1 text-truncate" title="<?= htmlspecialchars($hosp['location']) ?> &bull; <?= htmlspecialchars($hosp['address']) ?>">
+                                                                    <i class="fas fa-map-marker-alt text-danger me-1"></i>
+                                                                    <strong><?= htmlspecialchars($hosp['location']) ?></strong> &bull; <?= htmlspecialchars($hosp['address']) ?>
+                                                                </div>
+                                                                <div class="small text-muted d-flex flex-wrap gap-2">
+                                                                    <?php if (!empty($hosp['phone'])): ?>
+                                                                        <span><i class="fas fa-phone text-success me-1"></i> <?= htmlspecialchars($hosp['phone']) ?></span>
+                                                                    <?php endif; ?>
+                                                                    <?php if (!empty($hosp['email'])): ?>
+                                                                        <span><i class="fas fa-envelope text-info me-1"></i> <?= htmlspecialchars($hosp['email']) ?></span>
+                                                                    <?php endif; ?>
+                                                                </div>
+                                                            </div>
                                                         </div>
-                                                        <div class="small text-muted">
-                                                            <?php if (!empty($hosp['phone'])): ?>
-                                                                <span class="me-3"><i class="fas fa-phone text-success me-1"></i> <?= htmlspecialchars($hosp['phone']) ?></span>
-                                                            <?php endif; ?>
-                                                            <?php if (!empty($hosp['email'])): ?>
-                                                                <span><i class="fas fa-envelope text-info me-1"></i> <?= htmlspecialchars($hosp['email']) ?></span>
-                                                            <?php endif; ?>
+                                                        <div class="col-12 col-sm-5 col-md-4 text-sm-end text-start mt-2 mt-sm-0 d-flex flex-sm-column flex-row justify-content-between justify-content-sm-center align-items-sm-end align-items-center gap-2">
+                                                            <span class="badge bg-success hospital-vax-status mb-sm-1">Accredited</span>
+                                                            <button type="button" class="btn btn-sm btn-primary px-3 select-facility-btn text-nowrap" onclick="chooseHospital(<?= $hosp['hospital_id'] ?>, '<?= htmlspecialchars(addslashes($hosp['hospital_name'])) ?>')">
+                                                                <i class="fas fa-calendar-check me-1"></i> Select Facility
+                                                            </button>
                                                         </div>
                                                     </div>
-                                                </div>
-                                                <div class="flex-shrink-0 text-sm-end w-100 w-sm-auto">
-                                                    <span class="badge bg-success mb-2 d-inline-block hospital-vax-status">Accredited</span>
-                                                    <button type="button" class="btn btn-sm btn-primary d-block w-100" onclick="chooseHospital(<?= $hosp['hospital_id'] ?>, '<?= htmlspecialchars(addslashes($hosp['hospital_name'])) ?>')">
-                                                        <i class="fas fa-calendar-check me-1"></i> Select Facility
-                                                    </button>
                                                 </div>
                                             </div>
                                         </div>
                                     <?php endforeach; ?>
+                                </div>
+                                <div id="no-hospitals-for-vaccine-msg" class="alert alert-warning text-center py-4 my-3 d-none">
+                                    <i class="fas fa-exclamation-triangle fa-2x mb-2 text-warning d-block"></i>
+                                    <strong>No Hospitals Currently Stock This Vaccine</strong>
+                                    <p class="small text-muted mb-0 mt-1">None of the accredited facilities currently have this vaccine in stock. Please select another vaccine or check back later.</p>
                                 </div>
                             <?php endif; ?>
                         </div>
@@ -353,6 +372,7 @@ require_once __DIR__ . '/includes/sidebar.php'; ?>
     <script>
         const stockMap = <?= json_encode($stockMap) ?>;
         const allHospitals = <?= json_encode($allHospitalsMap) ?>;
+        const vaccineCatalog = <?= json_encode($vaccineCatalogMap) ?>;
 
         function escapeHtml(str) {
             if (!str) return '';
@@ -364,27 +384,116 @@ require_once __DIR__ . '/includes/sidebar.php'; ?>
                 .replace(/'/g, '&#039;');
         }
 
-        function updateHospitalCards(vaccineId) {
-            const cardItems = document.querySelectorAll('.hospital-card-item');
-            cardItems.forEach(card => {
-                const hId = card.getAttribute('data-hospital-id');
-                const badge = card.querySelector('.hospital-vax-status');
-                if (!badge) return;
+        function isVaccineAvailableAtHospital(hospitalId, vaccineId) {
+            if (!vaccineId || !hospitalId) return true;
+            if (stockMap[hospitalId] && stockMap[hospitalId][vaccineId]) {
+                return stockMap[hospitalId][vaccineId] === 'Available';
+            }
+            if (vaccineCatalog[vaccineId] && vaccineCatalog[vaccineId].stock_status === 'Unavailable') {
+                return false;
+            }
+            return true;
+        }
 
-                if (!vaccineId) {
-                    badge.className = 'badge bg-success mb-2 d-inline-block hospital-vax-status';
-                    badge.innerHTML = '<i class="fas fa-check me-1"></i> Accredited';
-                } else {
-                    const status = (stockMap[hId] && stockMap[hId][vaccineId]) ? stockMap[hId][vaccineId] : 'Available';
-                    if (status === 'Unavailable') {
-                        badge.className = 'badge bg-danger mb-2 d-inline-block hospital-vax-status';
-                        badge.innerHTML = '<i class="fas fa-times-circle me-1"></i> Out of Stock';
-                    } else {
-                        badge.className = 'badge bg-success mb-2 d-inline-block hospital-vax-status';
-                        badge.innerHTML = '<i class="fas fa-check-circle me-1"></i> In Stock';
+        function onVaccineSelected() {
+            const vaccineSelect = document.getElementById('booking_vaccine_id');
+            const hospitalSelect = document.getElementById('booking_hospital_id');
+            const hint = document.getElementById('hospital_select_hint');
+            const badgeCounter = document.getElementById('centers-count-badge');
+            const noHospAlert = document.getElementById('no-hospitals-for-vaccine-msg');
+
+            const vaccineId = vaccineSelect ? vaccineSelect.value : '';
+            const currentSelectedHospId = hospitalSelect ? hospitalSelect.value : '';
+
+            // 1. Filter the Hospital dropdown options
+            if (hospitalSelect) {
+                hospitalSelect.innerHTML = '<option value="">-- Choose Healthcare Facility --</option>';
+                let availableCount = 0;
+                let isCurrentStillAvailable = false;
+
+                for (const [hId, hosp] of Object.entries(allHospitals)) {
+                    const available = !vaccineId || isVaccineAvailableAtHospital(hId, vaccineId);
+                    if (available) {
+                        availableCount++;
+                        const opt = document.createElement('option');
+                        opt.value = hosp.hospital_id;
+                        opt.textContent = hosp.hospital_name + (hosp.location ? ' - ' + hosp.location : '');
+                        if (currentSelectedHospId && String(currentSelectedHospId) === String(hosp.hospital_id)) {
+                            opt.selected = true;
+                            isCurrentStillAvailable = true;
+                        }
+                        hospitalSelect.appendChild(opt);
                     }
                 }
+
+                if (!isCurrentStillAvailable) {
+                    hospitalSelect.value = '';
+                }
+
+                if (vaccineId && availableCount === 0) {
+                    const emptyOpt = document.createElement('option');
+                    emptyOpt.value = '';
+                    emptyOpt.disabled = true;
+                    emptyOpt.textContent = '-- No facilities currently have this vaccine in stock --';
+                    emptyOpt.selected = true;
+                    hospitalSelect.appendChild(emptyOpt);
+                }
+
+                if (hint) {
+                    if (vaccineId) {
+                        hint.textContent = availableCount + ' facility(ies) currently stock this vaccine.';
+                    } else {
+                        hint.textContent = 'Select vaccine to filter and show only hospitals where it is available.';
+                    }
+                }
+            }
+
+            // 2. Filter the Hospital Cards on the right side
+            const cardCols = document.querySelectorAll('.hospital-card-col');
+            let visibleCardsCount = 0;
+
+            cardCols.forEach(col => {
+                const hId = col.getAttribute('data-hospital-id');
+                const badge = col.querySelector('.hospital-vax-status');
+                const btn = col.querySelector('.select-facility-btn');
+                const isAvail = !vaccineId || isVaccineAvailableAtHospital(hId, vaccineId);
+
+                if (isAvail) {
+                    col.style.display = '';
+                    visibleCardsCount++;
+                    if (badge) {
+                        if (vaccineId) {
+                            badge.className = 'badge bg-success hospital-vax-status mb-sm-1';
+                            badge.innerHTML = '<i class="fas fa-check-circle me-1"></i> In Stock';
+                        } else {
+                            badge.className = 'badge bg-success hospital-vax-status mb-sm-1';
+                            badge.innerHTML = 'Accredited';
+                        }
+                    }
+                    if (btn) btn.disabled = false;
+                } else {
+                    // Hide this hospital completely as requested
+                    col.style.display = 'none';
+                }
             });
+
+            if (badgeCounter) {
+                if (vaccineId) {
+                    badgeCounter.textContent = visibleCardsCount + ' Available Center(s) with Stock';
+                } else {
+                    badgeCounter.textContent = visibleCardsCount + ' Available Centers';
+                }
+            }
+
+            if (noHospAlert) {
+                if (vaccineId && visibleCardsCount === 0) {
+                    noHospAlert.classList.remove('d-none');
+                } else {
+                    noHospAlert.classList.add('d-none');
+                }
+            }
+
+            checkAvailability();
         }
 
         function checkAvailability() {
@@ -395,10 +504,6 @@ require_once __DIR__ . '/includes/sidebar.php'; ?>
 
             const hospitalId = hospitalSelect ? hospitalSelect.value : '';
             const vaccineId = vaccineSelect ? vaccineSelect.value : '';
-            const vaccineText = (vaccineSelect && vaccineSelect.selectedIndex > 0) ? vaccineSelect.options[vaccineSelect.selectedIndex].text : 'Selected vaccine';
-            const hospitalText = (hospitalSelect && hospitalSelect.selectedIndex > 0) ? hospitalSelect.options[hospitalSelect.selectedIndex].text : 'Selected hospital';
-
-            updateHospitalCards(vaccineId);
 
             if (!hospitalId || !vaccineId) {
                 if (alertBox) alertBox.innerHTML = '';
@@ -406,65 +511,16 @@ require_once __DIR__ . '/includes/sidebar.php'; ?>
                 return;
             }
 
-            const currentStatus = (stockMap[hospitalId] && stockMap[hospitalId][vaccineId]) ? stockMap[hospitalId][vaccineId] : 'Available';
+            const isAvailable = isVaccineAvailableAtHospital(hospitalId, vaccineId);
 
-            if (currentStatus === 'Unavailable') {
+            if (!isAvailable) {
                 if (submitBtn) submitBtn.disabled = true;
-
-                // Find alternative hospitals where this vaccine is available
-                const alternatives = [];
-                for (const [hId, hosp] of Object.entries(allHospitals)) {
-                    if (hId == hospitalId) continue;
-                    const hStatus = (stockMap[hId] && stockMap[hId][vaccineId]) ? stockMap[hId][vaccineId] : 'Available';
-                    if (hStatus !== 'Unavailable') {
-                        alternatives.push(hosp);
-                    }
-                }
-
-                let altHtml = '';
-                if (alternatives.length > 0) {
-                    altHtml = `
-                        <div class="mt-2 pt-2 border-top border-danger border-opacity-25">
-                            <strong class="d-block mb-1 text-dark small"><i class="fas fa-hospital me-1 text-success"></i> Available at these other healthcare facilities:</strong>
-                            <div class="d-flex flex-column gap-2 mt-2">
-                    `;
-                    alternatives.forEach(alt => {
-                        altHtml += `
-                            <div class="d-flex justify-content-between align-items-center bg-white p-2 rounded border border-success-subtle shadow-sm">
-                                <div>
-                                    <span class="fw-bold text-dark small">${escapeHtml(alt.hospital_name)}</span>
-                                    <span class="badge bg-light text-muted border ms-1" style="font-size: 0.72rem;">${escapeHtml(alt.location || '')}</span>
-                                    ${alt.phone ? `<div class="small text-muted" style="font-size: 0.75rem;"><i class="fas fa-phone fa-xs me-1 text-success"></i> ${escapeHtml(alt.phone)}</div>` : ''}
-                                </div>
-                                <button type="button" class="btn btn-xs btn-outline-success btn-round flex-shrink-0" onclick="chooseHospital(${alt.hospital_id}, '${escapeHtml(alt.hospital_name)}')">
-                                    <i class="fas fa-exchange-alt me-1"></i> Switch Hospital
-                                </button>
-                            </div>
-                        `;
-                    });
-                    altHtml += `</div></div>`;
-                } else {
-                    altHtml = `
-                        <div class="mt-2 small text-muted">
-                            <i class="fas fa-info-circle me-1"></i> This vaccine is currently not available at any other registered hospital.
-                        </div>
-                    `;
-                }
-
                 if (alertBox) {
                     alertBox.innerHTML = `
                         <div class="alert alert-danger border-danger shadow-sm mb-0 p-3">
-                            <div class="d-flex align-items-start gap-2">
-                                <i class="fas fa-exclamation-triangle fa-lg text-danger mt-1 flex-shrink-0"></i>
-                                <div class="w-100">
-                                    <strong class="text-danger">Vaccine Out of Stock at Selected Hospital!</strong>
-                                    <div class="small mt-1 text-dark">
-                                        <strong>${escapeHtml(vaccineText)}</strong> is currently <u>unavailable</u> at <strong>${escapeHtml(hospitalText)}</strong>.
-                                        Please switch to an available hospital below to proceed with booking.
-                                    </div>
-                                    ${altHtml}
-                                </div>
-                            </div>
+                            <i class="fas fa-exclamation-triangle fa-lg text-danger me-2"></i>
+                            <strong>Vaccine Out of Stock at Selected Hospital!</strong>
+                            <div class="small mt-1 text-dark">Please select a hospital where this vaccine is available.</div>
                         </div>
                     `;
                 }
@@ -475,7 +531,7 @@ require_once __DIR__ . '/includes/sidebar.php'; ?>
                         <div class="alert alert-success py-2 px-3 small mb-0 d-flex align-items-center gap-2">
                             <i class="fas fa-check-circle text-success fa-lg flex-shrink-0"></i>
                             <div>
-                                <strong>In Stock:</strong> Vaccine is available at this healthcare center.
+                                <strong>In Stock:</strong> Vaccine is confirmed available at this healthcare center.
                             </div>
                         </div>
                     `;
@@ -484,18 +540,37 @@ require_once __DIR__ . '/includes/sidebar.php'; ?>
         }
 
         function chooseHospital(hospitalId, hospitalName) {
-            const selectEl = document.getElementById('booking_hospital_id');
-            if (selectEl) {
-                selectEl.value = hospitalId;
-                selectEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                selectEl.classList.add('border-success');
-                setTimeout(() => selectEl.classList.remove('border-success'), 2000);
+            const vaccineSelect = document.getElementById('booking_vaccine_id');
+            const hospitalSelect = document.getElementById('booking_hospital_id');
+
+            if (!vaccineSelect || !vaccineSelect.value) {
+                if (hospitalSelect) {
+                    hospitalSelect.value = hospitalId;
+                }
+                if (vaccineSelect) {
+                    vaccineSelect.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    vaccineSelect.focus();
+                    vaccineSelect.classList.add('border-warning');
+                    setTimeout(() => vaccineSelect.classList.remove('border-warning'), 2500);
+                }
+            } else {
+                if (hospitalSelect) {
+                    hospitalSelect.value = hospitalId;
+                    hospitalSelect.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    hospitalSelect.classList.add('border-success');
+                    setTimeout(() => hospitalSelect.classList.remove('border-success'), 2000);
+                }
+                checkAvailability();
             }
-            checkAvailability();
         }
 
         document.addEventListener('DOMContentLoaded', function() {
-            checkAvailability();
+            const vaccineSelect = document.getElementById('booking_vaccine_id');
+            if (vaccineSelect && vaccineSelect.value) {
+                onVaccineSelected();
+            } else {
+                checkAvailability();
+            }
         });
     </script>
 

@@ -33,12 +33,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmtUpdate->execute([$hospitalId]);
                     setFlash('info', "Hospital '{$hosp['hospital_name']}' registration request has been REJECTED.");
                 } elseif ($action === 'delete') {
+                    $pdo->beginTransaction();
+                    $pdo->prepare("DELETE FROM hospital_vaccines WHERE hospital_id = ?")->execute([$hospitalId]);
+                    $pdo->prepare("DELETE vr FROM vaccination_records vr INNER JOIN bookings b ON vr.booking_id = b.booking_id WHERE b.hospital_id = ?")->execute([$hospitalId]);
+                    $pdo->prepare("DELETE FROM bookings WHERE hospital_id = ?")->execute([$hospitalId]);
                     $stmtDel = $pdo->prepare("DELETE FROM hospitals WHERE hospital_id = ?");
                     $stmtDel->execute([$hospitalId]);
+                    $pdo->commit();
                     setFlash('success', "Hospital request for '{$hosp['hospital_name']}' has been removed.");
                 }
             }
         } catch (Exception $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             setFlash('error', 'Action failed: ' . $e->getMessage());
         }
     }

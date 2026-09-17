@@ -454,7 +454,6 @@ if ($pdo) {
                     <li class="nav-item"><a class="nav-link" href="#hospitals">Partner Hospitals</a></li>
                     <li class="nav-item"><a class="nav-link" href="#how-it-works">How It Works</a></li>
                 </ul>
-
                 <div class="d-flex align-items-center gap-3">
                     <!-- Auth Action Button -->
                     <?php if ($isLoggedIn): ?>

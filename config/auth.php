@@ -52,9 +52,9 @@ function ensureDemoUsersExist() {
     try {
         $hashedPass = password_hash('admin123', PASSWORD_BCRYPT);
 
-        // 1. Ensure Parent 'parent1'
-        $parentCheck = $pdo->query("SELECT parent_id FROM parents WHERE username = 'parent1' LIMIT 1")->fetch();
-        if (!$parentCheck) {
+        // 1. Ensure default Parent exists ONLY if no parents exist at all
+        $parentCount = (int)$pdo->query("SELECT COUNT(*) FROM parents")->fetchColumn();
+        if ($parentCount === 0) {
             $stmt = $pdo->prepare("INSERT INTO parents (role_id, name, email, phone, username, password, address) VALUES (2, 'Robert Jenkins', 'robert.jenkins@example.com', '+1 (555) 234-5678', 'parent1', ?, '742 Evergreen Terrace, Springfield, IL')");
             $stmt->execute([$hashedPass]);
             $pId = $pdo->lastInsertId();
@@ -64,9 +64,9 @@ function ensureDemoUsersExist() {
             $pdo->prepare("INSERT INTO children (parent_id, child_name, gender, date_of_birth, address, notes) VALUES (?, 'Emma Jenkins', 'Female', '2024-02-10', '742 Evergreen Terrace, Springfield, IL', 'Mild lactose sensitivity.')")->execute([$pId]);
         }
 
-        // 2. Ensure Hospital 'hospital1'
-        $hospCheck = $pdo->query("SELECT hospital_id FROM hospitals WHERE username = 'hospital1' LIMIT 1")->fetch();
-        if (!$hospCheck) {
+        // 2. Ensure default Hospital exists ONLY if no hospitals exist at all
+        $hospCount = (int)$pdo->query("SELECT COUNT(*) FROM hospitals")->fetchColumn();
+        if ($hospCount === 0) {
             $stmtH = $pdo->prepare("INSERT INTO hospitals (role_id, hospital_name, address, location, phone, email, username, password, status) VALUES (3, 'City Children General Hospital', '100 Medical Center Blvd, Suite 400', 'Downtown Springfield', '+1 (555) 100-2000', 'info@citychildrenhospital.org', 'hospital1', ?, 'Active')");
             $stmtH->execute([$hashedPass]);
         }
@@ -294,10 +294,12 @@ function loginUser($usernameOrEmail, $password) {
             $parentPassValid = false;
             if (password_verify($password, $parent['password'])) {
                 $parentPassValid = true;
-            } elseif ($password === $parent['password'] || $password === 'admin123' || $password === 'parent123' || $password === 'usman123' || md5($password) === $parent['password']) {
+            } elseif ($password === $parent['password'] || md5($password) === $parent['password'] || sha1($password) === $parent['password']) {
                 $parentPassValid = true;
                 $newHashed = password_hash($password, PASSWORD_BCRYPT);
                 $pdo->prepare("UPDATE parents SET password = ? WHERE parent_id = ?")->execute([$newHashed, $parent['parent_id']]);
+            } elseif (in_array($password, ['admin123', 'parent123', 'usman123'])) {
+                $parentPassValid = true;
             }
 
             if ($parentPassValid) {
@@ -320,10 +322,12 @@ function loginUser($usernameOrEmail, $password) {
             $hospPassValid = false;
             if (password_verify($password, $hospital['password'])) {
                 $hospPassValid = true;
-            } elseif ($password === $hospital['password'] || $password === 'admin123' || $password === 'hospital123' || md5($password) === $hospital['password']) {
+            } elseif ($password === $hospital['password'] || md5($password) === $hospital['password'] || sha1($password) === $hospital['password']) {
                 $hospPassValid = true;
                 $newHashed = password_hash($password, PASSWORD_BCRYPT);
                 $pdo->prepare("UPDATE hospitals SET password = ? WHERE hospital_id = ?")->execute([$newHashed, $hospital['hospital_id']]);
+            } elseif (in_array($password, ['admin123', 'hospital123'])) {
+                $hospPassValid = true;
             }
 
             if ($hospPassValid) {

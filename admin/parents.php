@@ -50,66 +50,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: parents.php');
         exit;
 
-    } elseif ($action === 'edit') {
-        $parentId = (int)($_POST['parent_id'] ?? 0);
-        $name     = trim($_POST['name'] ?? '');
-        $email    = trim($_POST['email'] ?? '');
-        $phone    = trim($_POST['phone'] ?? '');
-        $username = trim($_POST['username'] ?? '');
-        $address  = trim($_POST['address'] ?? '');
-        $newPass  = trim($_POST['password'] ?? '');
-
-        if ($parentId > 0 && !empty($name) && !empty($email) && !empty($username)) {
-            try {
-                // Check if username or email is taken by someone else
-                $stmtCheck = $pdo->prepare("SELECT parent_id FROM parents WHERE (username = ? OR email = ?) AND parent_id != ? LIMIT 1");
-                $stmtCheck->execute([$username, $email, $parentId]);
-                if ($stmtCheck->fetch()) {
-                    setFlash('error', 'Another parent is already using this username or email.');
-                } else {
-                    if (!empty($newPass)) {
-                        if (strlen($newPass) < 6) {
-                            throw new Exception('New password must be at least 6 characters long.');
-                        }
-                        $hashed = password_hash($newPass, PASSWORD_BCRYPT);
-                        $stmtUp = $pdo->prepare("UPDATE parents SET name = ?, email = ?, phone = ?, username = ?, password = ?, address = ? WHERE parent_id = ?");
-                        $stmtUp->execute([$name, $email, $phone, $username, $hashed, $address, $parentId]);
-                    } else {
-                        $stmtUp = $pdo->prepare("UPDATE parents SET name = ?, email = ?, phone = ?, username = ?, address = ? WHERE parent_id = ?");
-                        $stmtUp->execute([$name, $email, $phone, $username, $address, $parentId]);
-                    }
-
-                    setFlash('success', "Parent details for '{$name}' updated successfully.");
-                }
-            } catch (Exception $e) {
-                setFlash('error', 'Error updating parent: ' . $e->getMessage());
-            }
-        }
-        header('Location: parents.php');
-        exit;
-
-    } elseif ($action === 'delete') {
-        $parentId = (int)($_POST['parent_id'] ?? 0);
-        if ($parentId > 0) {
-            try {
-                // Check if children exist
-                $stmtKids = $pdo->prepare("SELECT COUNT(*) FROM children WHERE parent_id = ?");
-                $stmtKids->execute([$parentId]);
-                $kidsCount = (int)$stmtKids->fetchColumn();
-
-                if ($kidsCount > 0) {
-                    setFlash('error', "Cannot delete parent: This account is linked to {$kidsCount} child record(s). Please remove or reassign the children first.");
-                } else {
-                    $stmtDel = $pdo->prepare("DELETE FROM parents WHERE parent_id = ?");
-                    $stmtDel->execute([$parentId]);
-                    setFlash('success', 'Parent account deleted successfully.');
-                }
-            } catch (Exception $e) {
-                setFlash('error', 'Error deleting parent: ' . $e->getMessage());
-            }
-        }
-        header('Location: parents.php');
-        exit;
     }
 }
 
@@ -236,7 +176,6 @@ require_once __DIR__ . '/../includes/sidebar.php';
                                     <th>Residential Address</th>
                                     <th>Children Registered</th>
                                     <th>Bookings</th>
-                                    <th class="text-center">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -281,23 +220,11 @@ require_once __DIR__ . '/../includes/sidebar.php';
                                                     <?= $p['bookings_count'] ?> booked
                                                 </span>
                                             </td>
-                                            <td class="text-center text-nowrap">
-                                                <button type="button" class="btn btn-sm btn-outline-info me-1" onclick='openEditParentModal(<?= json_encode($p) ?>)' title="Edit Parent Profile">
-                                                    <i class="fas fa-edit"></i>
-                                                </button>
-                                                <form method="POST" action="parents.php" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this parent account?');">
-                                                    <input type="hidden" name="action" value="delete">
-                                                    <input type="hidden" name="parent_id" value="<?= $p['parent_id'] ?>">
-                                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete Parent">
-                                                        <i class="fas fa-trash"></i>
-                                                    </button>
-                                                </form>
-                                            </td>
                                         </tr>
                                     <?php endforeach; ?>
                                 <?php else: ?>
                                     <tr>
-                                        <td colspan="7" class="text-center py-5">
+                                        <td colspan="6" class="text-center py-5">
                                             <div class="text-muted">
                                                 <i class="fas fa-users-slash fa-3x mb-3 d-block text-secondary"></i>
                                                 <h5>No Parents Registered Yet</h5>
@@ -362,67 +289,5 @@ require_once __DIR__ . '/../includes/sidebar.php';
             </div>
         </div>
     </div>
-
-    <!-- Edit Parent Modal -->
-    <div class="modal fade" id="editParentModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <form method="POST" action="parents.php">
-                    <input type="hidden" name="action" value="edit">
-                    <input type="hidden" name="parent_id" id="edit_parent_id">
-                    <div class="modal-header bg-info text-white">
-                        <h5 class="modal-title"><i class="fas fa-user-edit me-2"></i> Update Parent Details</h5>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Full Name <span class="text-danger">*</span></label>
-                                <input type="text" name="name" id="edit_parent_name" class="form-control" required>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Email Address <span class="text-danger">*</span></label>
-                                <input type="email" name="email" id="edit_parent_email" class="form-control" required>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Contact Phone</label>
-                                <input type="tel" name="phone" id="edit_parent_phone" class="form-control">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Login Username <span class="text-danger">*</span></label>
-                                <input type="text" name="username" id="edit_parent_username" class="form-control" required>
-                            </div>
-                            <div class="col-md-12">
-                                <label class="form-label small fw-bold">Reset Password (leave blank to keep current password)</label>
-                                <input type="password" name="password" class="form-control" placeholder="••••••••">
-                            </div>
-                            <div class="col-12">
-                                <label class="form-label small fw-bold">Residential Address</label>
-                                <textarea name="address" id="edit_parent_address" class="form-control" rows="2"></textarea>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-info text-white"><i class="fas fa-save me-1"></i> Update Parent</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <script>
-    function openEditParentModal(p) {
-        document.getElementById('edit_parent_id').value = p.parent_id;
-        document.getElementById('edit_parent_name').value = p.name;
-        document.getElementById('edit_parent_email').value = p.email;
-        document.getElementById('edit_parent_phone').value = p.phone || '';
-        document.getElementById('edit_parent_username').value = p.username;
-        document.getElementById('edit_parent_address').value = p.address || '';
-
-        var modal = new bootstrap.Modal(document.getElementById('editParentModal'));
-        modal.show();
-    }
-    </script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

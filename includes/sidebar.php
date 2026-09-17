@@ -83,15 +83,6 @@
                     <h4 class="text-section">BOOKINGS & HOSPITALS</h4>
                 </li>
 
-                <li class="nav-item <?= ($activePage === 'admin_requests') ? 'active' : '' ?>">
-                    <a href="<?= BASE_URL ?>admin/requests.php">
-                        <i class="fas fa-envelope-open-text"></i>
-                        <p>Request from Parents</p>
-                        <?php if (!empty($pendingRequestsCount) && $pendingRequestsCount > 0): ?>
-                            <span class="badge bg-warning text-dark"><?= $pendingRequestsCount ?></span>
-                        <?php endif; ?>
-                    </a>
-                </li>
 
                 <li class="nav-item <?= ($activePage === 'admin_hospital_requests') ? 'active' : '' ?>">
                     <a href="<?= BASE_URL ?>admin/hospital-requests.php">

@@ -6,7 +6,10 @@
 $pageTitle = 'Child Profile & Vaccination Details';
 $activePage = 'admin_children';
 
-require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/../config/db.php';
+require_once __DIR__ . '/../config/auth.php';
+require_once __DIR__ . '/../config/helpers.php';
+requireAdmin();
 
 $childId = (int)($_GET['id'] ?? 0);
 if ($childId <= 0) {
@@ -65,9 +68,10 @@ foreach ($bookings as $b) {
         $administeredVaccines[$b['vaccine_id']] = $b;
     }
 }
-?>
 
-<?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
+require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/../includes/sidebar.php'; 
+?>
 
 <div class="main-panel">
     <?php require_once __DIR__ . '/../includes/navbar.php'; ?>

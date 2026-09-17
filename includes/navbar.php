@@ -48,15 +48,6 @@
 
 
 
-                <!-- Quick Parent Requests Shortcut -->
-                <li class="nav-item me-3">
-                    <a href="<?= BASE_URL ?>admin/requests.php" class="btn btn-xs btn-outline-warning text-dark position-relative">
-                        <i class="fas fa-baby me-1"></i> Parent Requests
-                        <?php if (!empty($pendingRequestsCount) && $pendingRequestsCount > 0): ?>
-                            <span class="badge bg-danger rounded-pill ms-1"><?= $pendingRequestsCount ?></span>
-                        <?php endif; ?>
-                    </a>
-                </li>
 
                 <!-- User Profile Dropdown -->
                 <li class="nav-item topbar-user dropdown hidden-caret">
@@ -94,12 +85,7 @@
                                         <span class="badge bg-danger rounded-pill float-end"><?= $pendingHospitalsCount ?></span>
                                     <?php endif; ?>
                                 </a>
-                                <a class="dropdown-item" href="<?= BASE_URL ?>admin/requests.php">
-                                    <i class="fas fa-tasks me-2"></i> Pending Parent Requests
-                                    <?php if (!empty($pendingRequestsCount) && $pendingRequestsCount > 0): ?>
-                                        <span class="badge bg-warning text-dark rounded-pill float-end"><?= $pendingRequestsCount ?></span>
-                                    <?php endif; ?>
-                                </a>
+
                                 <a class="dropdown-item" href="<?= BASE_URL ?>admin/reports.php"><i class="fas fa-chart-line me-2"></i> Vaccination Reports</a>
                                 <a class="dropdown-item" href="<?= BASE_URL ?>admin/hospitals.php"><i class="fas fa-hospital me-2"></i> Manage Hospitals</a>
                                 <div class="dropdown-divider"></div>

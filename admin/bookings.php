@@ -93,7 +93,7 @@ if ($pdo) {
                                     <th>Hospital Assigned</th>
                                     <th>Parent Contact</th>
                                     <th>Status</th>
-                                    <th class="text-center">Details</th>
+                                    <th class="text-center">Child Info</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -130,9 +130,9 @@ if ($pdo) {
                                             </td>
                                             <td><?= getStatusBadge($b['status']) ?></td>
                                             <td class="text-center">
-                                                <button type="button" class="btn btn-sm btn-outline-primary" onclick='viewBookingDetail(<?= json_encode($b) ?>)' title="View Full Info">
-                                                    <i class="fas fa-info-circle"></i> Info
-                                                </button>
+                                                <a href="child-details.php?id=<?= $b['child_id'] ?>" class="btn btn-sm btn-outline-info btn-round" title="Open Child Profile Details">
+                                                    <i class="fas fa-baby me-1"></i> Child Info
+                                                </a>
                                             </td>
                                         </tr>
                                     <?php endforeach; ?>
@@ -145,101 +145,5 @@ if ($pdo) {
 
         </div>
     </div>
-
-    <!-- Booking Details Modal -->
-    <div class="modal fade" id="bookingDetailModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header bg-primary text-white">
-                    <h5 class="modal-title"><i class="fas fa-file-invoice me-2"></i> Parent Booking Information</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="text-muted small">Booking Reference</label>
-                            <div class="fw-bold fs-5 text-primary font-monospace" id="det_bkg_no"></div>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="text-muted small">Current Booking Status</label>
-                            <div id="det_status"></div>
-                        </div>
-                        <div class="col-md-6 border-top pt-2">
-                            <label class="text-muted small">Child Name</label>
-                            <div class="fw-bold" id="det_child_name"></div>
-                            <small class="text-muted" id="det_child_meta"></small>
-                        </div>
-                        <div class="col-md-6 border-top pt-2">
-                            <label class="text-muted small">Parent / Guardian</label>
-                            <div class="fw-bold" id="det_parent_name"></div>
-                            <small class="text-muted" id="det_parent_contact"></small>
-                        </div>
-                        <div class="col-md-6 border-top pt-2">
-                            <label class="text-muted small">Vaccine Requested</label>
-                            <div class="fw-bold" id="det_vaccine"></div>
-                        </div>
-                        <div class="col-md-6 border-top pt-2">
-                            <label class="text-muted small">Hospital Facility</label>
-                            <div class="fw-bold" id="det_hospital"></div>
-                        </div>
-                        <div class="col-md-6 border-top pt-2">
-                            <label class="text-muted small">Scheduled Appointment Date</label>
-                            <div class="fw-bold" id="det_schedule"></div>
-                        </div>
-                        <div class="col-md-6 border-top pt-2">
-                            <label class="text-muted small">Admin Approval</label>
-                            <div id="det_admin_approval" class="fw-bold">-</div>
-                        </div>
-                        <div class="col-md-6 border-top pt-2">
-                            <label class="text-muted small">Vaccination Administered Date</label>
-                            <div id="det_vax_date" class="fw-bold text-success">-</div>
-                        </div>
-                        <div class="col-md-6 border-top pt-2">
-                            <label class="text-muted small">Vaccination Record Status</label>
-                            <div id="det_record_status">-</div>
-                        </div>
-                        <div class="col-12 border-top pt-2">
-                            <label class="text-muted small">Clinical Remarks / Notes</label>
-                            <div id="det_remarks" class="small text-dark">-</div>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-    function viewBookingDetail(b) {
-        document.getElementById('det_bkg_no').textContent = '#BK-' + String(b.booking_id).padStart(4, '0');
-        document.getElementById('det_status').innerHTML = '<span class="badge bg-secondary">' + b.status + '</span>';
-        document.getElementById('det_child_name').textContent = b.child_name;
-        document.getElementById('det_child_meta').textContent = 'DOB: ' + b.date_of_birth + ' (' + b.gender + ')';
-        document.getElementById('det_parent_name').textContent = b.parent_name;
-        document.getElementById('det_parent_contact').textContent = (b.parent_phone || 'N/A') + ' | ' + b.parent_email;
-        document.getElementById('det_vaccine').textContent = b.vaccine_name + ' (' + b.age_group + ')';
-        document.getElementById('det_hospital').textContent = b.hospital_name + (b.hospital_location ? ' - ' + b.hospital_location : '');
-        document.getElementById('det_schedule').textContent = b.appointment_date + (b.appointment_time ? ' at ' + b.appointment_time : '') + ' (Booked on ' + b.booking_date + ')';
-        
-        var approvalText = '-';
-        if (b.status === 'Approved' || b.status === 'Completed') {
-            approvalText = 'Approved by Hospital on ' + (b.approval_date || '-');
-        } else if (b.status === 'Rejected') {
-            approvalText = 'Declined by Hospital on ' + (b.approval_date || '-');
-        } else {
-            approvalText = 'Awaiting Hospital Schedule';
-        }
-        document.getElementById('det_admin_approval').textContent = approvalText;
-        
-        document.getElementById('det_vax_date').textContent = b.vaccination_date || 'Not yet administered';
-        document.getElementById('det_record_status').textContent = b.record_status || (b.status === 'Completed' ? 'Vaccinated' : 'Pending');
-        document.getElementById('det_remarks').textContent = b.record_remarks || 'None recorded';
-
-        var modal = new bootstrap.Modal(document.getElementById('bookingDetailModal'));
-        modal.show();
-    }
-    </script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

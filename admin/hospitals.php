@@ -55,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $location     = trim($_POST['location'] ?? '');
         $address      = trim($_POST['address'] ?? '');
         $username     = trim($_POST['username'] ?? '');
-        $status       = $_POST['status'] === 'Inactive' ? 'Inactive' : 'Active';
+        $status       = in_array($_POST['status'] ?? '', ['Active', 'Inactive', 'Pending', 'Rejected']) ? $_POST['status'] : 'Active';
         $newPassword  = trim($_POST['password'] ?? '');
 
         if ($id > 0 && !empty($hospitalName) && !empty($email) && !empty($username)) {
@@ -113,11 +113,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $id = (int)($_POST['hospital_id'] ?? 0);
         if ($id > 0) {
             try {
+                $pdo->beginTransaction();
+
+                // 1. Delete associated hospital vaccine stock records
+                $stmtHV = $pdo->prepare("DELETE FROM hospital_vaccines WHERE hospital_id = ?");
+                $stmtHV->execute([$id]);
+
+                // 2. Delete vaccination records linked to bookings for this hospital
+                $stmtVR = $pdo->prepare("DELETE vr FROM vaccination_records vr INNER JOIN bookings b ON vr.booking_id = b.booking_id WHERE b.hospital_id = ?");
+                $stmtVR->execute([$id]);
+
+                // 3. Delete all bookings for this hospital
+                $stmtB = $pdo->prepare("DELETE FROM bookings WHERE hospital_id = ?");
+                $stmtB->execute([$id]);
+
+                // 4. Delete the hospital itself
                 $stmtDel = $pdo->prepare("DELETE FROM hospitals WHERE hospital_id = ?");
                 $stmtDel->execute([$id]);
-                setFlash('success', 'Hospital deleted successfully.');
+
+                $pdo->commit();
+                setFlash('success', 'Hospital and all associated records deleted successfully.');
             } catch (Exception $e) {
-                setFlash('error', 'Cannot delete hospital with existing booking records. Consider setting status to Inactive instead.');
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                setFlash('error', 'Error deleting hospital: ' . $e->getMessage());
             }
         }
         header('Location: hospitals.php');
@@ -241,16 +261,19 @@ require_once __DIR__ . '/../includes/sidebar.php';
                                                 <?= getStatusBadge($h['status']) ?>
                                             </td>
                                             <td class="text-center">
-                                                <button type="button" class="btn btn-sm btn-outline-info me-1" onclick='openEditHospitalModal(<?= json_encode($h) ?>)' title="Update Hospital">
+                                                <button type="button" class="btn btn-sm btn-outline-info me-1 btn-edit-hospital" 
+                                                        data-hospital='<?= htmlspecialchars(json_encode($h), ENT_QUOTES, 'UTF-8') ?>' 
+                                                        title="Update Hospital">
                                                     <i class="fas fa-edit"></i>
                                                 </button>
-                                                <form method="POST" action="hospitals.php" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this hospital?');">
-                                                    <input type="hidden" name="action" value="delete">
-                                                    <input type="hidden" name="hospital_id" value="<?= $h['hospital_id'] ?>">
-                                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete Hospital">
-                                                        <i class="fas fa-trash"></i>
-                                                    </button>
-                                                </form>
+                                                <button type="button" class="btn btn-sm btn-outline-danger btn-delete-hospital" 
+                                                        data-bs-toggle="modal" 
+                                                        data-bs-target="#deleteHospitalModal" 
+                                                        data-id="<?= $h['hospital_id'] ?>" 
+                                                        data-name="<?= htmlspecialchars($h['hospital_name']) ?>" 
+                                                        title="Delete Hospital">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
                                             </td>
                                         </tr>
                                     <?php endforeach; ?>
@@ -364,6 +387,8 @@ require_once __DIR__ . '/../includes/sidebar.php';
                                 <select name="status" id="edit_hosp_status" class="form-select">
                                     <option value="Active">Active</option>
                                     <option value="Inactive">Inactive</option>
+                                    <option value="Pending">Pending</option>
+                                    <option value="Rejected">Rejected</option>
                                 </select>
                             </div>
                             <div class="col-12">
@@ -381,20 +406,87 @@ require_once __DIR__ . '/../includes/sidebar.php';
         </div>
     </div>
 
+    <!-- Delete Hospital Modal -->
+    <div class="modal fade" id="deleteHospitalModal" tabindex="-1" aria-labelledby="deleteHospitalModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <form method="POST" action="hospitals.php">
+                    <input type="hidden" name="action" value="delete">
+                    <input type="hidden" name="hospital_id" id="delete_hospital_id">
+                    <div class="modal-header bg-danger text-white">
+                        <h5 class="modal-title fw-bold" id="deleteHospitalModalLabel">
+                            <i class="fas fa-trash-alt me-2"></i> Confirm Hospital Deletion
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="mb-2">Are you sure you want to permanently delete this hospital?</p>
+                        <div class="alert alert-light border">
+                            <strong id="delete_hospital_name" class="text-danger"></strong>
+                        </div>
+                        <div class="alert alert-warning py-2 mb-0 small">
+                            <i class="fas fa-exclamation-triangle me-1"></i> <strong>Warning:</strong> Deleting this facility will also remove its associated vaccine stock records and bookings.
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-danger">
+                            <i class="fas fa-trash me-1"></i> Delete Hospital
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+
     <script>
     function openEditHospitalModal(h) {
-        document.getElementById('edit_hosp_id').value = h.hospital_id;
-        document.getElementById('edit_hosp_name').value = h.hospital_name;
+        if (!h) return;
+        document.getElementById('edit_hosp_id').value = h.hospital_id || '';
+        document.getElementById('edit_hosp_name').value = h.hospital_name || '';
         document.getElementById('edit_hosp_location').value = h.location || '';
         document.getElementById('edit_hosp_email').value = h.email || '';
         document.getElementById('edit_hosp_phone').value = h.phone || '';
-        document.getElementById('edit_hosp_username').value = h.username;
-        document.getElementById('edit_hosp_status').value = h.status;
+        document.getElementById('edit_hosp_username').value = h.username || '';
+        if (document.getElementById('edit_hosp_status')) {
+            document.getElementById('edit_hosp_status').value = h.status || 'Active';
+        }
         document.getElementById('edit_hosp_address').value = h.address || '';
 
-        var modal = new bootstrap.Modal(document.getElementById('editHospitalModal'));
+        var modalEl = document.getElementById('editHospitalModal');
+        var modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
         modal.show();
     }
-    </script>
 
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Event delegation on document so dynamic DataTables page changes work seamlessly
+        document.addEventListener('click', function(e) {
+            var editBtn = e.target.closest('.btn-edit-hospital');
+            if (editBtn) {
+                e.preventDefault();
+                var rawData = editBtn.getAttribute('data-hospital');
+                if (rawData) {
+                    try {
+                        var h = JSON.parse(rawData);
+                        openEditHospitalModal(h);
+                    } catch (err) {
+                        console.error('Error parsing hospital data JSON:', err);
+                    }
+                }
+                return;
+            }
+
+            var deleteBtn = e.target.closest('.btn-delete-hospital');
+            if (deleteBtn) {
+                var id = deleteBtn.getAttribute('data-id') || '';
+                var name = deleteBtn.getAttribute('data-name') || 'Selected Hospital';
+                var delIdInput = document.getElementById('delete_hospital_id');
+                var delNameEl = document.getElementById('delete_hospital_name');
+                if (delIdInput) delIdInput.value = id;
+                if (delNameEl) delNameEl.textContent = name;
+            }
+        });
+    });
+    </script>
